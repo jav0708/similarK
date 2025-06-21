@@ -6,6 +6,7 @@ import numpy as np
 from typing import Dict, List, Tuple, Any, Set
 from collections import defaultdict
 import scipy.stats as stats
+from tqdm import tqdm
 
 
 class PatternGrouper:
@@ -78,65 +79,75 @@ class PatternGrouper:
         print(f"使用批量大小: {self.batch_size}")
         
         # 分批处理
-        for batch_start in range(0, total_patterns, self.batch_size):
-            batch_end = min(batch_start + self.batch_size, total_patterns)
-            batch_patterns = patterns[batch_start:batch_end]
-            batch_size_actual = len(batch_patterns)
-            
-            print(f"处理批次 {batch_start//self.batch_size + 1}: 模式 {batch_start+1}-{batch_end} ({batch_size_actual} 个)")
-            
-            if not established_groups:
-                # 第一批：直接分组
-                similarity_matrix = self._calculate_pattern_similarity_matrix(batch_patterns, results)
-                batch_groups = self._cluster_patterns(batch_patterns, similarity_matrix)
+        total_batches = (total_patterns + self.batch_size - 1) // self.batch_size
+        
+        with tqdm(total=total_batches, desc="增量分组进度", unit="批次") as batch_pbar:
+            for batch_idx, batch_start in enumerate(range(0, total_patterns, self.batch_size)):
+                batch_end = min(batch_start + self.batch_size, total_patterns)
+                batch_patterns = patterns[batch_start:batch_end]
+                batch_size_actual = len(batch_patterns)
                 
-                # 建立初始组
-                for group_indices in batch_groups:
-                    absolute_indices = [batch_start + i for i in group_indices]
-                    established_groups.append(absolute_indices)
-                    # 选择第一个模式作为代表
-                    group_representatives.append(patterns[absolute_indices[0]])
+                print(f"\n处理批次 {batch_idx + 1}/{total_batches}: 模式 {batch_start+1}-{batch_end} ({batch_size_actual} 个)")
                 
-                print(f"  建立初始 {len(batch_groups)} 个组")
-            else:
-                # 后续批次：逐个模式尝试加入现有组或创建新组
-                new_groups = []
-                
-                for i, pattern in enumerate(batch_patterns):
-                    pattern_index = batch_start + i
-                    assigned = False
+                if not established_groups:
+                    # 第一批：直接分组
+                    similarity_matrix = self._calculate_pattern_similarity_matrix(batch_patterns, results)
+                    batch_groups = self._cluster_patterns(batch_patterns, similarity_matrix)
                     
-                    # 尝试加入现有组
-                    for group_idx, representative in enumerate(group_representatives):
-                        similarity = self._calculate_pattern_similarity(pattern, representative)
-                        
-                        if similarity >= self.correlation_threshold:
-                            established_groups[group_idx].append(pattern_index)
-                            assigned = True
-                            break
+                    # 建立初始组
+                    for group_indices in batch_groups:
+                        absolute_indices = [batch_start + i for i in group_indices]
+                        established_groups.append(absolute_indices)
+                        # 选择第一个模式作为代表
+                        group_representatives.append(patterns[absolute_indices[0]])
                     
-                    # 如果无法加入现有组，创建新组
-                    if not assigned:
-                        new_groups.append(pattern_index)
+                    print(f"  建立初始 {len(batch_groups)} 个组")
+                else:
+                    # 后续批次：逐个模式尝试加入现有组或创建新组
+                    new_groups = []
+                    
+                    # 为当前批次的模式匹配添加进度条
+                    with tqdm(total=batch_size_actual, desc="  模式匹配", unit="模式", leave=False) as pattern_pbar:
+                        for i, pattern in enumerate(batch_patterns):
+                            pattern_index = batch_start + i
+                            assigned = False
+                            
+                            # 尝试加入现有组
+                            for group_idx, representative in enumerate(group_representatives):
+                                similarity = self._calculate_pattern_similarity(pattern, representative)
+                                
+                                if similarity >= self.correlation_threshold:
+                                    established_groups[group_idx].append(pattern_index)
+                                    assigned = True
+                                    break
+                            
+                            # 如果无法加入现有组，创建新组
+                            if not assigned:
+                                new_groups.append(pattern_index)
+                            
+                            pattern_pbar.update(1)
+                    
+                    # 处理无法分配的模式（在它们之间进行分组）
+                    if new_groups:
+                        if len(new_groups) == 1:
+                            # 只有一个模式，直接创建组
+                            established_groups.append(new_groups)
+                            group_representatives.append(patterns[new_groups[0]])
+                        else:
+                            # 多个模式，计算它们之间的相似性并分组
+                            print(f"  对 {len(new_groups)} 个未分配模式进行内部分组...")
+                            new_patterns = [patterns[idx] for idx in new_groups]
+                            similarity_matrix = self._calculate_pattern_similarity_matrix(new_patterns, results)
+                            internal_groups = self._cluster_patterns(new_patterns, similarity_matrix)
+                            
+                            for internal_group in internal_groups:
+                                absolute_indices = [new_groups[i] for i in internal_group]
+                                established_groups.append(absolute_indices)
+                                group_representatives.append(patterns[absolute_indices[0]])
+                    
+                    print(f"  当前总组数: {len(established_groups)}")
                 
-                # 处理无法分配的模式（在它们之间进行分组）
-                if new_groups:
-                    if len(new_groups) == 1:
-                        # 只有一个模式，直接创建组
-                        established_groups.append(new_groups)
-                        group_representatives.append(patterns[new_groups[0]])
-                    else:
-                        # 多个模式，计算它们之间的相似性并分组
-                        new_patterns = [patterns[idx] for idx in new_groups]
-                        similarity_matrix = self._calculate_pattern_similarity_matrix(new_patterns, results)
-                        internal_groups = self._cluster_patterns(new_patterns, similarity_matrix)
-                        
-                        for internal_group in internal_groups:
-                            absolute_indices = [new_groups[i] for i in internal_group]
-                            established_groups.append(absolute_indices)
-                            group_representatives.append(patterns[absolute_indices[0]])
-                
-                print(f"  当前总组数: {len(established_groups)}")
+                batch_pbar.update(1)
         
         print(f"增量分组完成：{total_patterns} 个模式 -> {len(established_groups)} 个组")
         
@@ -161,29 +172,29 @@ class PatternGrouper:
         
         print(f"计算 {n}x{n} 排列结构相似性矩阵...")
         
-        # 计算所有模式对之间的Spearman相关性
-        for i in range(n):
-            if i % max(1, n // 10) == 0:  # 显示进度
-                print(f"进度: {i}/{n}")
-                
-            for j in range(i + 1, n):
-                try:
-                    pattern_i = np.array(patterns[i])
-                    pattern_j = np.array(patterns[j])
-                    
-                    # 计算排列之间的距离相似性
-                    # 使用归一化的逆距离作为相似性度量
-                    max_possible_diff = 2 * sum(range(1, len(pattern_i) + 1))  # 更准确的最大距离
-                    actual_distance = np.sum(np.abs(pattern_i - pattern_j))
-                    normalized_distance = actual_distance / max_possible_diff
-                    similarity = 1.0 - normalized_distance  # 距离越小，相似性越高
-                    
-                    similarity_matrix[i, j] = max(0.0, similarity)
-                    similarity_matrix[j, i] = max(0.0, similarity)
+        # 使用tqdm显示进度条
+        with tqdm(total=n, desc="计算相似性矩阵", unit="行") as pbar:
+            for i in range(n):
+                for j in range(i + 1, n):
+                    try:
+                        pattern_i = np.array(patterns[i])
+                        pattern_j = np.array(patterns[j])
                         
-                except Exception as e:
-                    similarity_matrix[i, j] = 0.0
-                    similarity_matrix[j, i] = 0.0
+                        # 计算排列之间的距离相似性
+                        # 使用归一化的逆距离作为相似性度量
+                        max_possible_diff = 2 * sum(range(1, len(pattern_i) + 1))  # 更准确的最大距离
+                        actual_distance = np.sum(np.abs(pattern_i - pattern_j))
+                        normalized_distance = actual_distance / max_possible_diff
+                        similarity = 1.0 - normalized_distance  # 距离越小，相似性越高
+                        
+                        similarity_matrix[i, j] = max(0.0, similarity)
+                        similarity_matrix[j, i] = max(0.0, similarity)
+                            
+                    except Exception as e:
+                        similarity_matrix[i, j] = 0.0
+                        similarity_matrix[j, i] = 0.0
+                
+                pbar.update(1)  # 更新进度条
         
         return similarity_matrix
     

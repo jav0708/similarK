@@ -8,6 +8,7 @@ from collections import defaultdict
 import itertools
 from multiprocessing import Pool
 from functools import partial
+from tqdm import tqdm
 
 
 class RankedKLineAnalyzer:
@@ -103,9 +104,16 @@ class RankedKLineAnalyzer:
             chunks.append((chunk_prices, i, end_idx - i))
         
         # 并行处理每个数据块
+        print(f"使用 {self.n_jobs} 个进程处理 {len(chunks)} 个数据块...")
         with Pool(self.n_jobs) as pool:
             worker_func = partial(self._process_chunk, window_size=self.window_size, future_days=self.future_days)
-            chunk_results = pool.map(worker_func, chunks)
+            
+            # 使用tqdm监控进度
+            chunk_results = []
+            with tqdm(total=len(chunks), desc="并行处理数据块", unit="块") as pbar:
+                for result in pool.imap(worker_func, chunks):
+                    chunk_results.append(result)
+                    pbar.update(1)
         
         # 合并结果
         combined_results = defaultdict(lambda: {
@@ -323,26 +331,28 @@ class RankedKLineAnalyzer:
         all_returns = {day: defaultdict(list) for day in self.future_days}
         
         # 处理每只股票
-        for stock_code, df in stocks_data.items():
-            try:
-                print(f"处理股票: {stock_code}")
-                
-                # 分析单只股票
-                stock_results = self.analyze_single_stock(df, price_type)
-                
-                # 合并结果
-                for pattern, stats in stock_results.items():
-                    all_patterns[pattern].append(stats['frequency'])
+        with tqdm(total=len(stocks_data), desc="处理股票", unit="只") as pbar:
+            for stock_code, df in stocks_data.items():
+                try:
+                    pbar.set_description(f"处理股票: {stock_code}")
                     
-                    for day in self.future_days:
-                        returns_key = f'returns_{day}d'
-                        if returns_key in stats:
-                            # 将该模式在这只股票中的所有收益率数据加入
-                            all_returns[day][pattern].extend(stats[returns_key]['raw_data'])
+                    # 分析单只股票
+                    stock_results = self.analyze_single_stock(df, price_type)
                 
-            except Exception as e:
-                print(f"处理股票 {stock_code} 时出错: {str(e)}")
-                continue
+                    # 合并结果
+                    for pattern, stats in stock_results.items():
+                        all_patterns[pattern].append(stats['frequency'])
+                        
+                        for day in self.future_days:
+                            returns_key = f'returns_{day}d'
+                            if returns_key in stats:
+                                # 将该模式在这只股票中的所有收益率数据加入
+                                all_returns[day][pattern].extend(stats[returns_key]['raw_data'])
+                    
+                except Exception as e:
+                    print(f"处理股票 {stock_code} 时出错: {str(e)}")
+                finally:
+                    pbar.update(1)  # 无论成功还是失败都更新进度条
         
         return all_patterns, all_returns
     
@@ -362,12 +372,19 @@ class RankedKLineAnalyzer:
         stock_items = list(stocks_data.items())
         
         # 并行处理股票
+        print(f"使用 {self.n_jobs} 个进程并行处理 {len(stock_items)} 只股票...")
         with Pool(self.n_jobs) as pool:
             worker_func = partial(self._process_single_stock_worker, 
                                 price_type=price_type, 
                                 window_size=self.window_size,
                                 future_days=self.future_days)
-            results = pool.map(worker_func, stock_items)
+            
+            # 使用tqdm监控进度
+            results = []
+            with tqdm(total=len(stock_items), desc="并行处理股票", unit="只") as pbar:
+                for result in pool.imap(worker_func, stock_items):
+                    results.append(result)
+                    pbar.update(1)
         
         # 合并结果
         all_patterns = defaultdict(list)
