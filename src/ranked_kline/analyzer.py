@@ -13,7 +13,8 @@ from functools import partial
 class RankedKLineAnalyzer:
     """排序K线分析器"""
     
-    def __init__(self, window_size: int = 10, min_frequency: int = 10, n_jobs: int = 1):
+    def __init__(self, window_size: int = 10, min_frequency: int = 10, n_jobs: int = 1, 
+                 enable_grouping: bool = False, correlation_threshold: float = 0.9):
         """
         初始化分析器
         
@@ -21,10 +22,14 @@ class RankedKLineAnalyzer:
             window_size: 时间窗口大小
             min_frequency: 最小频率阈值
             n_jobs: 并行处理数量
+            enable_grouping: 是否启用分组功能
+            correlation_threshold: 相关系数阈值
         """
         self.window_size = window_size
         self.min_frequency = min_frequency
         self.n_jobs = n_jobs
+        self.enable_grouping = enable_grouping
+        self.correlation_threshold = correlation_threshold
         self.future_days = [1, 3, 5, 10, 20]  # 预测天数
     
     def analyze_single_stock(self, df: pd.DataFrame, price_type: str) -> Dict[str, Any]:
@@ -65,6 +70,10 @@ class RankedKLineAnalyzer:
         else:
             # 并行处理
             results = self._analyze_single_stock_parallel(prices)
+        
+        # 应用分组功能（如果启用）
+        if self.enable_grouping and len(results) > 1:
+            results = self._apply_grouping(results)
         
         return results
     
@@ -214,6 +223,32 @@ class RankedKLineAnalyzer:
         ranks[sorted_indices] = np.arange(1, len(values) + 1)
         return ranks.tolist()
     
+    def _apply_grouping(self, results: Dict[Tuple, Dict]) -> Dict[str, Dict]:
+        """
+        对分析结果应用分组
+        
+        Args:
+            results: 原始分析结果
+            
+        Returns:
+            分组后的结果
+        """
+        # 动态导入模式分组器
+        import sys
+        from pathlib import Path
+        
+        # 添加项目根目录到sys.path
+        project_root = Path(__file__).parent.parent.parent
+        if str(project_root) not in sys.path:
+            sys.path.insert(0, str(project_root))
+        
+        from src.utils.pattern_grouper import PatternGrouper
+        
+        grouper = PatternGrouper(correlation_threshold=self.correlation_threshold)
+        grouped_results = grouper.group_patterns(results)
+        
+        return grouped_results
+    
     def analyze_batch_stocks(self, stocks_data: Dict[str, pd.DataFrame], 
                            price_type: str) -> Dict[str, Any]:
         """
@@ -262,6 +297,10 @@ class RankedKLineAnalyzer:
                             }
                 
                 merged_results[pattern] = pattern_stats
+        
+        # 应用分组功能（如果启用）
+        if self.enable_grouping and len(merged_results) > 1:
+            merged_results = self._apply_grouping(merged_results)
         
         return merged_results
     

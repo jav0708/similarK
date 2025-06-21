@@ -27,7 +27,9 @@ def main():
         analyzer = RankedKLineAnalyzer(
             window_size=args.window,
             min_frequency=args.min_frequency,
-            n_jobs=args.n_jobs
+            n_jobs=args.n_jobs,
+            enable_grouping=args.enable_grouping,
+            correlation_threshold=args.correlation_threshold
         )
         
         start_time = time.time()
@@ -163,16 +165,27 @@ def print_analysis_stats(results):
     if results:
         # 按频率排序
         sorted_results = sorted(results.items(), 
-                              key=lambda x: x[1]['frequency'], 
+                              key=lambda x: x[1].get('frequency', x[1].get('total_frequency', 0)), 
                               reverse=True)
         
-        print(f"最高频率模式: {sorted_results[0][1]['frequency']} 次")
-        print(f"模式示例: {sorted_results[0][0]}")
+        freq_value = sorted_results[0][1].get('frequency', sorted_results[0][1].get('total_frequency', 0))
+        print(f"最高频率模式: {freq_value} 次")
         
-        # 统计收益率信息
-        avg_returns_1d = [stats['returns_1d']['mean'] 
-                         for stats in results.values() 
-                         if 'returns_1d' in stats]
+        # 处理分组后的模式显示
+        if 'representative_pattern' in sorted_results[0][1]:
+            print(f"代表模式: {sorted_results[0][1]['representative_pattern']}")
+        else:
+            print(f"模式示例: {sorted_results[0][0]}")
+        
+        # 统计收益率信息  
+        avg_returns_1d = []
+        for stats in results.values():
+            if 'returns_1d' in stats:
+                avg_returns_1d.append(stats['returns_1d']['mean'])
+            elif isinstance(stats, dict) and 'returns_1d' in stats:
+                # 处理分组后的结果格式
+                if 'mean' in stats['returns_1d']:
+                    avg_returns_1d.append(stats['returns_1d']['mean'])
         
         if avg_returns_1d:
             import numpy as np

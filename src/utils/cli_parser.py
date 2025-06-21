@@ -31,6 +31,12 @@ class CLIParser:
   
   # 使用所有CPU核心
   python main.py --mode batch --data_dir data_example/ --price_type open -w 10 -j -1
+  
+  # 启用分组功能减少文件大小
+  python main.py --mode single --stock_file data_example/sh600082.csv --price_type close -w 8 --enable_grouping
+  
+  # 自定义相关系数阈值
+  python main.py --mode single --stock_file data_example/sh600082.csv --price_type close -w 6 --enable_grouping --correlation_threshold 0.8
             """
         )
         
@@ -97,6 +103,19 @@ class CLIParser:
             help='并行处理数量 (默认: 1, -1表示使用所有CPU核心)'
         )
         
+        parser.add_argument(
+            '--enable_grouping',
+            action='store_true',
+            help='启用模式分组功能，减少输出文件大小'
+        )
+        
+        parser.add_argument(
+            '--correlation_threshold',
+            type=float,
+            default=0.9,
+            help='分组时的相关系数阈值 (默认: 0.9)'
+        )
+        
         return parser
     
     def parse_args(self) -> argparse.Namespace:
@@ -155,6 +174,10 @@ class CLIParser:
         if args.n_jobs == -1:
             import multiprocessing
             args.n_jobs = multiprocessing.cpu_count()
+        
+        # 验证相关系数阈值
+        if args.correlation_threshold < 0.0 or args.correlation_threshold > 1.0:
+            self.parser.error("相关系数阈值必须在0.0到1.0之间")
     
     def print_help(self):
         """打印帮助信息"""

@@ -51,10 +51,13 @@ class OutputManager:
         
         # 应用频率过滤
         filtered_results = {pattern: stats for pattern, stats in results.items() 
-                           if stats['frequency'] >= min_frequency}
+                           if stats.get('frequency', stats.get('total_frequency', 0)) >= min_frequency}
+        
+        # 检测是否为分组结果
+        is_grouped = any('group_id' in stats for stats in filtered_results.values())
         
         # 转换为DataFrame
-        df = self._results_to_dataframe(filtered_results)
+        df = self._results_to_dataframe(filtered_results, is_grouped)
         
         # 保存CSV
         df.to_csv(file_path, index=False, encoding='utf-8-sig')
@@ -79,52 +82,79 @@ class OutputManager:
         
         # 应用频率过滤
         filtered_results = {pattern: stats for pattern, stats in results.items() 
-                           if stats['frequency'] >= min_frequency}
+                           if stats.get('frequency', stats.get('total_frequency', 0)) >= min_frequency}
+        
+        # 检测是否为分组结果
+        is_grouped = any('group_id' in stats for stats in filtered_results.values())
         
         # 转换为DataFrame
-        df = self._results_to_dataframe(filtered_results)
+        df = self._results_to_dataframe(filtered_results, is_grouped)
         
         # 保存CSV
         df.to_csv(file_path, index=False, encoding='utf-8-sig')
         
         return str(file_path)
     
-    def _results_to_dataframe(self, results: Dict[str, Any]) -> pd.DataFrame:
+    def _results_to_dataframe(self, results: Dict[str, Any], is_grouped: bool = False) -> pd.DataFrame:
         """
         将分析结果转换为DataFrame
         
         Args:
             results: 分析结果字典
+            is_grouped: 是否为分组后的结果
             
         Returns:
             格式化的DataFrame
         """
         if not results:
             # 返回空的DataFrame但包含正确的列
-            return pd.DataFrame(columns=[
+            base_columns = [
                 'rank_pattern', 'return_1d_mean', 'return_1d_std',
                 'return_3d_mean', 'return_3d_std', 'return_5d_mean', 'return_5d_std',
                 'return_10d_mean', 'return_10d_std', 'return_20d_mean', 'return_20d_std',
                 'frequency'
-            ])
+            ]
+            if is_grouped:
+                base_columns.extend(['group_id', 'pattern_count', 'representative_pattern'])
+            return pd.DataFrame(columns=base_columns)
         
         data = []
         
-        for pattern, stats in results.items():
-            row = {
-                'rank_pattern': str(pattern),
-                'return_1d_mean': stats.get('returns_1d', {}).get('mean', 0.0),
-                'return_1d_std': stats.get('returns_1d', {}).get('std', 0.0),
-                'return_3d_mean': stats.get('returns_3d', {}).get('mean', 0.0),
-                'return_3d_std': stats.get('returns_3d', {}).get('std', 0.0),
-                'return_5d_mean': stats.get('returns_5d', {}).get('mean', 0.0),
-                'return_5d_std': stats.get('returns_5d', {}).get('std', 0.0),
-                'return_10d_mean': stats.get('returns_10d', {}).get('mean', 0.0),
-                'return_10d_std': stats.get('returns_10d', {}).get('std', 0.0),
-                'return_20d_mean': stats.get('returns_20d', {}).get('mean', 0.0),
-                'return_20d_std': stats.get('returns_20d', {}).get('std', 0.0),
-                'frequency': stats.get('frequency', 0)
-            }
+        for key, stats in results.items():
+            if is_grouped:
+                # 分组后的结果格式
+                row = {
+                    'group_id': stats.get('group_id', key),
+                    'representative_pattern': stats.get('representative_pattern', ''),
+                    'pattern_count': stats.get('pattern_count', 1),
+                    'return_1d_mean': stats.get('returns_1d', {}).get('mean', 0.0),
+                    'return_1d_std': stats.get('returns_1d', {}).get('std', 0.0),
+                    'return_3d_mean': stats.get('returns_3d', {}).get('mean', 0.0),
+                    'return_3d_std': stats.get('returns_3d', {}).get('std', 0.0),
+                    'return_5d_mean': stats.get('returns_5d', {}).get('mean', 0.0),
+                    'return_5d_std': stats.get('returns_5d', {}).get('std', 0.0),
+                    'return_10d_mean': stats.get('returns_10d', {}).get('mean', 0.0),
+                    'return_10d_std': stats.get('returns_10d', {}).get('std', 0.0),
+                    'return_20d_mean': stats.get('returns_20d', {}).get('mean', 0.0),
+                    'return_20d_std': stats.get('returns_20d', {}).get('std', 0.0),
+                    'frequency': stats.get('total_frequency', stats.get('frequency', 0))
+                }
+            else:
+                # 原始结果格式
+                row = {
+                    'rank_pattern': str(key),
+                    'return_1d_mean': stats.get('returns_1d', {}).get('mean', 0.0),
+                    'return_1d_std': stats.get('returns_1d', {}).get('std', 0.0),
+                    'return_3d_mean': stats.get('returns_3d', {}).get('mean', 0.0),
+                    'return_3d_std': stats.get('returns_3d', {}).get('std', 0.0),
+                    'return_5d_mean': stats.get('returns_5d', {}).get('mean', 0.0),
+                    'return_5d_std': stats.get('returns_5d', {}).get('std', 0.0),
+                    'return_10d_mean': stats.get('returns_10d', {}).get('mean', 0.0),
+                    'return_10d_std': stats.get('returns_10d', {}).get('std', 0.0),
+                    'return_20d_mean': stats.get('returns_20d', {}).get('mean', 0.0),
+                    'return_20d_std': stats.get('returns_20d', {}).get('std', 0.0),
+                    'frequency': stats.get('frequency', 0)
+                }
             data.append(row)
         
         df = pd.DataFrame(data)
@@ -174,7 +204,7 @@ class OutputManager:
         # 计算统计信息
         total_patterns = len(results)
         high_freq_patterns = sum(1 for stats in results.values() 
-                               if stats['frequency'] >= min_frequency)
+                               if stats.get('frequency', stats.get('total_frequency', 0)) >= min_frequency)
         
         # 计算所有可能的模式数量（仅在window<=10时显示，否则数字太大）
         import math
@@ -188,8 +218,20 @@ class OutputManager:
         print(f"高频模式 (≥{min_frequency}次): {high_freq_patterns} 种")
         
         if total_patterns > 0:
-            max_freq = max(stats['frequency'] for stats in results.values())
-            print(f"最高频率: {max_freq} 次")
+            # 检测是否为分组结果
+            is_grouped = any('group_id' in stats for stats in results.values())
+            if is_grouped:
+                max_freq = max(stats.get('total_frequency', stats.get('frequency', 0)) 
+                             for stats in results.values())
+                total_original_patterns = sum(stats.get('pattern_count', 1) 
+                                           for stats in results.values())
+                print(f"最高频率: {max_freq} 次")
+                print(f"原始模式数: {total_original_patterns} -> 分组后: {total_patterns}")
+                reduction_rate = (total_original_patterns - total_patterns) / total_original_patterns
+                print(f"压缩率: {reduction_rate:.1%}")
+            else:
+                max_freq = max(stats['frequency'] for stats in results.values())
+                print(f"最高频率: {max_freq} 次")
         print()
         print("生成分析表格...")
     
