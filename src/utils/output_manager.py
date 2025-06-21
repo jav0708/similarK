@@ -33,7 +33,7 @@ class OutputManager:
             dir_path.mkdir(parents=True, exist_ok=True)
     
     def save_single_stock_result(self, stock_code: str, price_type: str, 
-                                window: int, results: Dict[str, Any]) -> str:
+                                window: int, results: Dict[str, Any], min_frequency: int = 10) -> str:
         """
         保存单股分析结果
         
@@ -49,8 +49,12 @@ class OutputManager:
         filename = f"{stock_code}_{price_type}_w{window}.csv"
         file_path = self.output_dir / "single_stock" / filename
         
+        # 应用频率过滤
+        filtered_results = {pattern: stats for pattern, stats in results.items() 
+                           if stats['frequency'] >= min_frequency}
+        
         # 转换为DataFrame
-        df = self._results_to_dataframe(results)
+        df = self._results_to_dataframe(filtered_results)
         
         # 保存CSV
         df.to_csv(file_path, index=False, encoding='utf-8-sig')
@@ -58,7 +62,7 @@ class OutputManager:
         return str(file_path)
     
     def save_market_result(self, price_type: str, window: int, 
-                          results: Dict[str, Any]) -> str:
+                          results: Dict[str, Any], min_frequency: int = 10) -> str:
         """
         保存市场分析结果
         
@@ -73,8 +77,12 @@ class OutputManager:
         filename = f"market_{price_type}_w{window}.csv"
         file_path = self.output_dir / "market" / filename
         
+        # 应用频率过滤
+        filtered_results = {pattern: stats for pattern, stats in results.items() 
+                           if stats['frequency'] >= min_frequency}
+        
         # 转换为DataFrame
-        df = self._results_to_dataframe(results)
+        df = self._results_to_dataframe(filtered_results)
         
         # 保存CSV
         df.to_csv(file_path, index=False, encoding='utf-8-sig')
@@ -128,7 +136,7 @@ class OutputManager:
         return df
     
     def print_summary(self, stock_info: Dict[str, str], price_type: str, 
-                     window: int, results: Dict[str, Any], mode: str):
+                     window: int, results: Dict[str, Any], mode: str, min_frequency: int = 10):
         """
         打印分析摘要
         
@@ -165,16 +173,23 @@ class OutputManager:
         
         # 计算统计信息
         total_patterns = len(results)
-        min_frequency = 10  # 高频模式阈值
         high_freq_patterns = sum(1 for stats in results.values() 
                                if stats['frequency'] >= min_frequency)
         
+        # 计算所有可能的模式数量（仅在window<=10时显示，否则数字太大）
         import math
-        max_possible = math.factorial(window)
+        if window <= 10:
+            max_possible = math.factorial(window)
+            print(f"找到排序模式: {max_possible:,} 种可能")
+        else:
+            print(f"排序模式理论数量: {window}! (数量极大)")
         
-        print(f"找到排序模式: {max_possible:,} 种可能")
         print(f"实际出现模式: {total_patterns:,} 种")
         print(f"高频模式 (≥{min_frequency}次): {high_freq_patterns} 种")
+        
+        if total_patterns > 0:
+            max_freq = max(stats['frequency'] for stats in results.values())
+            print(f"最高频率: {max_freq} 次")
         print()
         print("生成分析表格...")
     

@@ -11,7 +11,14 @@
       "Bash(git branch:*)",
       "Bash(git push:*)",
       "Bash(ls:*)",
-      "Bash(nslookup:*)"
+      "Bash(nslookup:*)",
+      "Bash(find:*)",
+      "Bash(python:*)",
+      "Bash(time:*)",
+      "Bash(cp:*)",
+      "Bash(mv:*)",
+      "Bash(diff:*)",
+      "Bash(rm:*)"
     ],
     "deny": []
   }

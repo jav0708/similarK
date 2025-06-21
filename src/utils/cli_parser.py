@@ -25,6 +25,12 @@ class CLIParser:
   
   # 批量分析
   python main.py --mode batch --data_dir data_example/ --price_type close -w 20
+  
+  # 使用并行处理加速分析
+  python main.py --mode single --stock_file data_example/sh600082.csv --price_type close -w 15 -j 4
+  
+  # 使用所有CPU核心
+  python main.py --mode batch --data_dir data_example/ --price_type open -w 10 -j -1
             """
         )
         
@@ -84,6 +90,13 @@ class CLIParser:
             help='详细输出模式'
         )
         
+        parser.add_argument(
+            '--n_jobs', '-j',
+            type=int,
+            default=1,
+            help='并行处理数量 (默认: 1, -1表示使用所有CPU核心)'
+        )
+        
         return parser
     
     def parse_args(self) -> argparse.Namespace:
@@ -133,6 +146,15 @@ class CLIParser:
         # 验证最小频率
         if args.min_frequency < 1:
             self.parser.error("最小频率必须大于等于1")
+        
+        # 验证并行数量
+        if args.n_jobs < -1 or args.n_jobs == 0:
+            self.parser.error("并行数量必须为正数或-1（表示使用所有CPU核心）")
+        
+        # 处理-1的情况（使用所有CPU核心）
+        if args.n_jobs == -1:
+            import multiprocessing
+            args.n_jobs = multiprocessing.cpu_count()
     
     def print_help(self):
         """打印帮助信息"""

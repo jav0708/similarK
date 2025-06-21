@@ -26,7 +26,8 @@ def main():
         output_manager = OutputManager(args.output_dir)
         analyzer = RankedKLineAnalyzer(
             window_size=args.window,
-            min_frequency=args.min_frequency
+            min_frequency=args.min_frequency,
+            n_jobs=args.n_jobs
         )
         
         start_time = time.time()
@@ -73,18 +74,23 @@ def run_single_analysis(args, data_loader, analyzer, output_manager):
     # 获取股票信息
     stock_info = data_loader.get_stock_info(df)
     
+    # 执行分析
+    price_name = ['开盘价', '最高价', '最低价', '收盘价'][['open', 'high', 'low', 'close'].index(args.price_type)]
+    if args.n_jobs > 1:
+        print(f"正在计算{price_name}排序模式...（使用{args.n_jobs}个并行进程）")
+    else:
+        print(f"正在计算{price_name}排序模式...")
+    results = analyzer.analyze_single_stock(df, args.price_type)
+    
     # 打印分析摘要
     output_manager.print_summary(
-        stock_info, args.price_type, args.window, {}, "single"
+        stock_info, args.price_type, args.window, results, "single", args.min_frequency
     )
-    
-    # 执行分析
-    results = analyzer.analyze_single_stock(df, args.price_type)
     
     # 保存结果
     stock_code = stock_info.get('stock_code', Path(args.stock_file).stem)
     output_path = output_manager.save_single_stock_result(
-        stock_code, args.price_type, args.window, results
+        stock_code, args.price_type, args.window, results, args.min_frequency
     )
     
     print(f"保存结果: {output_path}")
@@ -113,23 +119,28 @@ def run_batch_analysis(args, data_loader, analyzer, output_manager):
     if not stocks_data:
         raise ValueError("没有成功加载任何股票数据")
     
-    # 打印分析摘要
-    mock_stock_info = {'stock_code': 'MARKET', 'stock_name': '全市场'}
-    output_manager.print_summary(
-        mock_stock_info, args.price_type, args.window, {}, "batch"
-    )
-    
     print(f"开始分析 {len(stocks_data)} 只股票...")
+    price_name = ['开盘价', '最高价', '最低价', '收盘价'][['open', 'high', 'low', 'close'].index(args.price_type)]
+    if args.n_jobs > 1:
+        print(f"正在计算{price_name}排序模式...（使用{args.n_jobs}个并行进程）")
+    else:
+        print(f"正在计算{price_name}排序模式...")
     print()
     
     # 执行批量分析
     results = analyzer.analyze_batch_stocks(stocks_data, args.price_type)
     
+    # 打印分析摘要
+    mock_stock_info = {'stock_code': 'MARKET', 'stock_name': '全市场'}
+    output_manager.print_summary(
+        mock_stock_info, args.price_type, args.window, results, "batch", args.min_frequency
+    )
+    
     print("\n合并分析结果...")
     
     # 保存结果
     output_path = output_manager.save_market_result(
-        args.price_type, args.window, results
+        args.price_type, args.window, results, args.min_frequency
     )
     
     print(f"保存结果: {output_path}")

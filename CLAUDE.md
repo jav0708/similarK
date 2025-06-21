@@ -43,10 +43,17 @@ python main.py --mode single --stock_file data_example/sh600082.csv --price_type
 # Batch analysis
 python main.py --mode batch --data_dir data_example/ --price_type close -w 10
 
+# Parallel processing (speeds up analysis)
+python main.py --mode single --stock_file data_example/sh600082.csv --price_type close -w 15 -j 4
+
+# Use all CPU cores
+python main.py --mode batch --data_dir data_example/ --price_type open -w 10 -j -1
+
 # Common parameters:
 # --price_type: open, high, low, close
 # --window: time window size (2-100)
 # --min_frequency: minimum pattern frequency threshold (default: 10)
+# --n_jobs, -j: number of parallel processes (default: 1, -1 for all CPU cores)
 # --output_dir: output directory (default: output/)
 # --verbose: detailed output
 ```
@@ -76,3 +83,7 @@ No test framework is currently configured. Validation should be done by running 
 - Future returns are calculated as `(future_price - current_price) / current_price`
 - Pattern aggregation uses `collections.defaultdict` for efficient frequency counting
 - Batch processing merges results across all stocks before applying frequency thresholds
+- Parallel processing uses `multiprocessing.Pool` for CPU-intensive computations
+- Single stock analysis splits data into chunks across multiple processes
+- Batch analysis processes different stocks in parallel
+- All parallel results are verified to match single-threaded output exactly
