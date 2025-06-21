@@ -116,6 +116,27 @@ class CLIParser:
             help='分组时的相关系数阈值 (默认: 0.9)'
         )
         
+        parser.add_argument(
+            '--batch_size',
+            type=int,
+            default=1000,
+            help='批处理大小，用于大数据集的内存管理 (默认: 1000)'
+        )
+        
+        parser.add_argument(
+            '--enable_monitoring',
+            action='store_true',
+            default=True,
+            help='启用性能监控（内存使用、进度显示）'
+        )
+        
+        parser.add_argument(
+            '--test_mode',
+            type=int,
+            default=None,
+            help='测试模式：只处理前 N 只股票用于测试'
+        )
+        
         return parser
     
     def parse_args(self) -> argparse.Namespace:
@@ -178,6 +199,14 @@ class CLIParser:
         # 验证相关系数阈值
         if args.correlation_threshold < 0.0 or args.correlation_threshold > 1.0:
             self.parser.error("相关系数阈值必须在0.0到1.0之间")
+        
+        # 验证批处理大小
+        if args.batch_size < 1:
+            self.parser.error("批处理大小必须大于0")
+        
+        # 验证测试模式
+        if args.test_mode is not None and args.test_mode < 1:
+            self.parser.error("测试模式股票数量必须大于0")
     
     def print_help(self):
         """打印帮助信息"""

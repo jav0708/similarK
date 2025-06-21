@@ -29,7 +29,9 @@ def main():
             min_frequency=args.min_frequency,
             n_jobs=args.n_jobs,
             enable_grouping=args.enable_grouping,
-            correlation_threshold=args.correlation_threshold
+            correlation_threshold=args.correlation_threshold,
+            enable_monitoring=args.enable_monitoring,
+            batch_size=args.batch_size
         )
         
         start_time = time.time()
@@ -116,7 +118,13 @@ def run_batch_analysis(args, data_loader, analyzer, output_manager):
     
     # 批量加载股票数据
     print(f"正在扫描数据目录: {args.data_dir}")
-    stocks_data = data_loader.load_batch_stocks(args.data_dir)
+    
+    # 如果在测试模式，只加载部分数据
+    if args.test_mode:
+        print(f"测试模式：只处理前 {args.test_mode} 只股票")
+        stocks_data = data_loader.load_batch_stocks(args.data_dir, batch_size=args.test_mode)
+    else:
+        stocks_data = data_loader.load_batch_stocks(args.data_dir)
     
     if not stocks_data:
         raise ValueError("没有成功加载任何股票数据")

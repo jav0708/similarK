@@ -70,12 +70,13 @@ class DataLoader:
         except Exception as e:
             raise Exception(f"加载文件 {file_path} 失败: {str(e)}")
     
-    def load_batch_stocks(self, data_dir: str) -> Dict[str, pd.DataFrame]:
+    def load_batch_stocks(self, data_dir: str, batch_size: int = None) -> Dict[str, pd.DataFrame]:
         """
         批量加载股票文件
         
         Args:
             data_dir: 数据文件夹路径
+            batch_size: 批处理大小，如果不指定则加载所有文件
             
         Returns:
             股票代码到DataFrame的字典
@@ -89,16 +90,23 @@ class DataLoader:
         if not csv_files:
             raise ValueError(f"目录 {data_dir} 中没有找到CSV文件")
         
+        # 如果指定了batch_size，只加载前几个文件用于测试
+        if batch_size is not None:
+            csv_files = csv_files[:batch_size]
+            print(f"测试模式：只加载前 {len(csv_files)} 个文件")
+        
         stocks_data = {}
         failed_files = []
         
-        for file_path in csv_files:
+        for i, file_path in enumerate(csv_files):
             try:
                 df = self.load_single_stock(str(file_path))
                 # 从文件名提取股票代码
                 stock_code = file_path.stem
                 stocks_data[stock_code] = df
-                print(f"成功加载: {stock_code}")
+                
+                if i % 100 == 0 or i == len(csv_files) - 1:
+                    print(f"加载进度: {i + 1}/{len(csv_files)} ({(i + 1) / len(csv_files) * 100:.1f}%)")
                 
             except Exception as e:
                 failed_files.append((str(file_path), str(e)))
@@ -108,6 +116,48 @@ class DataLoader:
             print(f"\n警告: {len(failed_files)} 个文件加载失败")
         
         print(f"\n成功加载 {len(stocks_data)} 个股票文件")
+        return stocks_data
+    
+    def get_stock_file_list(self, data_dir: str) -> List[str]:
+        """
+        获取数据目录中的所有股票文件路径
+        
+        Args:
+            data_dir: 数据文件夹路径
+            
+        Returns:
+            文件路径列表
+        """
+        data_dir = Path(data_dir)
+        if not data_dir.exists():
+            raise FileNotFoundError(f"数据目录不存在: {data_dir}")
+        
+        csv_files = list(data_dir.glob("*.csv"))
+        return [str(f) for f in csv_files]
+    
+    def load_stocks_by_list(self, file_paths: List[str]) -> Dict[str, pd.DataFrame]:
+        """
+        根据文件路径列表加载股票数据
+        
+        Args:
+            file_paths: 文件路径列表
+            
+        Returns:
+            股票数据字典
+        """
+        stocks_data = {}
+        failed_files = []
+        
+        for file_path in file_paths:
+            try:
+                df = self.load_single_stock(file_path)
+                stock_code = Path(file_path).stem
+                stocks_data[stock_code] = df
+                
+            except Exception as e:
+                failed_files.append((file_path, str(e)))
+                print(f"加载失败: {Path(file_path).name} - {str(e)}")
+        
         return stocks_data
     
     def _preprocess_data(self, df: pd.DataFrame) -> pd.DataFrame:
