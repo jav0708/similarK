@@ -18,7 +18,8 @@
       "Bash(cp:*)",
       "Bash(mv:*)",
       "Bash(diff:*)",
-      "Bash(rm:*)"
+      "Bash(rm:*)",
+      "Bash(rg:*)"
     ],
     "deny": []
   }

@@ -11,18 +11,20 @@ import scipy.stats as stats
 class PatternGrouper:
     """排列模式分组器"""
     
-    def __init__(self, correlation_threshold: float = 0.9):
+    def __init__(self, correlation_threshold: float = 0.9, batch_size: int = 5000):
         """
         初始化分组器
         
         Args:
             correlation_threshold: 相关系数阈值，默认0.9
+            batch_size: 增量分组时的批量大小，默认10000
         """
         self.correlation_threshold = correlation_threshold
+        self.batch_size = batch_size
     
     def group_patterns(self, results: Dict[Tuple, Dict]) -> Dict[str, Dict]:
         """
-        对排列模式进行分组
+        对排列模式进行分组（增量分组算法，避免内存爆炸）
         
         Args:
             results: 原始分析结果，格式为 {pattern: stats}
@@ -33,21 +35,113 @@ class PatternGrouper:
         if not results:
             return {}
         
-        print(f"开始分组 {len(results)} 个模式...")
+        total_patterns = len(results)
+        print(f"开始增量分组 {total_patterns} 个模式...")
         
-        # 计算所有模式之间的结构相似性矩阵
+        # 检查是否需要使用增量分组
+        if total_patterns <= 2000:
+            # 小数据集直接使用原算法
+            print("数据量较小，使用完整矩阵算法...")
+            return self._group_patterns_full_matrix(results)
+        else:
+            # 大数据集使用增量分组
+            print("数据量较大，使用增量分组算法...")
+            return self._group_patterns_incremental(results)
+    
+    def _group_patterns_full_matrix(self, results: Dict[Tuple, Dict]) -> Dict[str, Dict]:
+        """原始的完整矩阵分组算法"""
         patterns = list(results.keys())
         similarity_matrix = self._calculate_pattern_similarity_matrix(patterns, results)
-        
-        # 基于相关系数进行分组
         groups = self._cluster_patterns(patterns, similarity_matrix)
-        
-        # 合并每组的统计数据
         grouped_results = self._merge_group_stats(groups, results)
         
         print(f"分组完成：{len(results)} 个模式 -> {len(grouped_results)} 个组")
-        
         return grouped_results
+    
+    def _group_patterns_incremental(self, results: Dict[Tuple, Dict]) -> Dict[str, Dict]:
+        """
+        增量分组算法，避免内存爆炸
+        
+        Args:
+            results: 原始分析结果
+            
+        Returns:
+            分组后的结果
+        """
+        patterns = list(results.keys())
+        total_patterns = len(patterns)
+        
+        # 存储已建立的组
+        established_groups = []  # 每个元素是一个组，包含模式索引列表
+        group_representatives = []  # 每个组的代表模式
+        
+        print(f"使用批量大小: {self.batch_size}")
+        
+        # 分批处理
+        for batch_start in range(0, total_patterns, self.batch_size):
+            batch_end = min(batch_start + self.batch_size, total_patterns)
+            batch_patterns = patterns[batch_start:batch_end]
+            batch_size_actual = len(batch_patterns)
+            
+            print(f"处理批次 {batch_start//self.batch_size + 1}: 模式 {batch_start+1}-{batch_end} ({batch_size_actual} 个)")
+            
+            if not established_groups:
+                # 第一批：直接分组
+                similarity_matrix = self._calculate_pattern_similarity_matrix(batch_patterns, results)
+                batch_groups = self._cluster_patterns(batch_patterns, similarity_matrix)
+                
+                # 建立初始组
+                for group_indices in batch_groups:
+                    absolute_indices = [batch_start + i for i in group_indices]
+                    established_groups.append(absolute_indices)
+                    # 选择第一个模式作为代表
+                    group_representatives.append(patterns[absolute_indices[0]])
+                
+                print(f"  建立初始 {len(batch_groups)} 个组")
+            else:
+                # 后续批次：逐个模式尝试加入现有组或创建新组
+                new_groups = []
+                
+                for i, pattern in enumerate(batch_patterns):
+                    pattern_index = batch_start + i
+                    assigned = False
+                    
+                    # 尝试加入现有组
+                    for group_idx, representative in enumerate(group_representatives):
+                        similarity = self._calculate_pattern_similarity(pattern, representative)
+                        
+                        if similarity >= self.correlation_threshold:
+                            established_groups[group_idx].append(pattern_index)
+                            assigned = True
+                            break
+                    
+                    # 如果无法加入现有组，创建新组
+                    if not assigned:
+                        new_groups.append(pattern_index)
+                
+                # 处理无法分配的模式（在它们之间进行分组）
+                if new_groups:
+                    if len(new_groups) == 1:
+                        # 只有一个模式，直接创建组
+                        established_groups.append(new_groups)
+                        group_representatives.append(patterns[new_groups[0]])
+                    else:
+                        # 多个模式，计算它们之间的相似性并分组
+                        new_patterns = [patterns[idx] for idx in new_groups]
+                        similarity_matrix = self._calculate_pattern_similarity_matrix(new_patterns, results)
+                        internal_groups = self._cluster_patterns(new_patterns, similarity_matrix)
+                        
+                        for internal_group in internal_groups:
+                            absolute_indices = [new_groups[i] for i in internal_group]
+                            established_groups.append(absolute_indices)
+                            group_representatives.append(patterns[absolute_indices[0]])
+                
+                print(f"  当前总组数: {len(established_groups)}")
+        
+        print(f"增量分组完成：{total_patterns} 个模式 -> {len(established_groups)} 个组")
+        
+        # 合并统计数据
+        return self._merge_group_stats(established_groups, results)
     
     def _calculate_pattern_similarity_matrix(self, patterns: List[Tuple], 
                                            results: Dict[Tuple, Dict]) -> np.ndarray:
@@ -92,6 +186,31 @@ class PatternGrouper:
                     similarity_matrix[j, i] = 0.0
         
         return similarity_matrix
+    
+    def _calculate_pattern_similarity(self, pattern1: Tuple, pattern2: Tuple) -> float:
+        """
+        计算两个模式之间的相似性
+        
+        Args:
+            pattern1: 第一个模式
+            pattern2: 第二个模式
+            
+        Returns:
+            相似性分数 (0.0-1.0)
+        """
+        try:
+            pattern_i = np.array(pattern1)
+            pattern_j = np.array(pattern2)
+            
+            # 计算归一化距离相似性
+            max_possible_diff = 2 * sum(range(1, len(pattern_i) + 1))
+            actual_distance = np.sum(np.abs(pattern_i - pattern_j))
+            normalized_distance = actual_distance / max_possible_diff
+            similarity = 1.0 - normalized_distance
+            
+            return max(0.0, similarity)
+        except Exception:
+            return 0.0
     
     def _cluster_patterns(self, patterns: List[Tuple], 
                          similarity_matrix: np.ndarray) -> List[List[int]]:

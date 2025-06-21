@@ -244,7 +244,10 @@ class RankedKLineAnalyzer:
         
         from src.utils.pattern_grouper import PatternGrouper
         
-        grouper = PatternGrouper(correlation_threshold=self.correlation_threshold)
+        grouper = PatternGrouper(
+            correlation_threshold=self.correlation_threshold,
+            batch_size=5000  # 默认批量大小，可以根据内存情况调整
+        )
         grouped_results = grouper.group_patterns(results)
         
         return grouped_results
