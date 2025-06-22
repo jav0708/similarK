@@ -568,14 +568,24 @@ class RankedKLineAnalyzer:
                         pattern_stats[returns_key] = {
                             'mean': np.mean(returns_data),
                             'std': np.std(returns_data),
-                            'count': len(returns_data)
+                            'count': len(returns_data),
+                            'raw_data': returns_data  # 添加原始数据，用于分组器合并
                         }
                     else:
                         pattern_stats[returns_key] = {
                             'mean': 0.0,
                             'std': 0.0,
-                            'count': 0
+                            'count': 0,
+                            'raw_data': []  # 空数据情况下也提供raw_data字段
                         }
+                else:
+                    # 处理模式不存在于all_returns中的情况
+                    pattern_stats[returns_key] = {
+                        'mean': 0.0,
+                        'std': 0.0,
+                        'count': 0,
+                        'raw_data': []  # 缺失数据情况下也提供raw_data字段
+                    }
             
             merged_results[pattern] = pattern_stats
             
