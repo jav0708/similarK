@@ -173,10 +173,10 @@ def print_analysis_stats(results):
     if results:
         # 按频率排序
         sorted_results = sorted(results.items(), 
-                              key=lambda x: x[1].get('frequency', x[1].get('total_frequency', 0)), 
+                              key=lambda x: x[1].get('frequency', 0), 
                               reverse=True)
         
-        freq_value = sorted_results[0][1].get('frequency', sorted_results[0][1].get('total_frequency', 0))
+        freq_value = sorted_results[0][1].get('frequency', 0)
         print(f"最高频率模式: {freq_value} 次")
         
         # 处理分组后的模式显示
@@ -213,12 +213,23 @@ def print_batch_stats(stocks_data, results):
     print(f"合并模式数量: {len(results)}")
     
     if results:
-        total_frequency = sum(stats['frequency'] for stats in results.values())
+        total_frequency = sum(stats.get('frequency', stats.get('total_frequency', 0)) for stats in results.values())
         print(f"模式总出现次数: {total_frequency:,}")
         
         # 最高频模式
-        max_freq_pattern = max(results.items(), key=lambda x: x[1]['frequency'])
-        print(f"最高频模式: {max_freq_pattern[0]} (出现 {max_freq_pattern[1]['frequency']} 次)")
+        max_freq_pattern = max(results.items(), key=lambda x: x[1].get('frequency', x[1].get('total_frequency', 0)))
+        freq_value = max_freq_pattern[1].get('frequency', max_freq_pattern[1].get('total_frequency', 0))
+        
+        # 处理分组后的模式显示
+        if 'representative_pattern' in max_freq_pattern[1]:
+            # 分组后的结果
+            pattern_display = max_freq_pattern[1]['representative_pattern']
+            pattern_count = max_freq_pattern[1].get('pattern_count', 1)
+            print(f"最高频组: {max_freq_pattern[0]} (包含 {pattern_count} 个模式，总出现 {freq_value} 次)")
+            print(f"代表模式: {pattern_display}")
+        else:
+            # 非分组结果
+            print(f"最高频模式: {max_freq_pattern[0]} (出现 {freq_value} 次)")
 
 
 if __name__ == "__main__":

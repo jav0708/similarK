@@ -12,16 +12,18 @@ from tqdm import tqdm
 class PatternGrouper:
     """排列模式分组器"""
     
-    def __init__(self, correlation_threshold: float = 0.9, batch_size: int = 5000):
+    def __init__(self, correlation_threshold: float = 0.9, batch_size: int = 5000, min_frequency: int = 10):
         """
         初始化分组器
         
         Args:
             correlation_threshold: 相关系数阈值，默认0.9
             batch_size: 增量分组时的批量大小，默认10000
+            min_frequency: 最小频率阈值，用于分组后过滤
         """
         self.correlation_threshold = correlation_threshold
         self.batch_size = batch_size
+        self.min_frequency = min_frequency
     
     def group_patterns(self, results: Dict[Tuple, Dict]) -> Dict[str, Dict]:
         """
@@ -56,8 +58,13 @@ class PatternGrouper:
         groups = self._cluster_patterns(patterns, similarity_matrix)
         grouped_results = self._merge_group_stats(groups, results)
         
+        # 在分组后应用频率过滤
+        filtered_grouped_results = {group_id: stats for group_id, stats in grouped_results.items() 
+                                   if stats.get('frequency', 0) >= self.min_frequency}
+        
         print(f"分组完成：{len(results)} 个模式 -> {len(grouped_results)} 个组")
-        return grouped_results
+        print(f"频率过滤：{len(grouped_results)} 个组 -> {len(filtered_grouped_results)} 个组（频率>={self.min_frequency}）")
+        return filtered_grouped_results
     
     def _group_patterns_incremental(self, results: Dict[Tuple, Dict]) -> Dict[str, Dict]:
         """
@@ -152,7 +159,14 @@ class PatternGrouper:
         print(f"增量分组完成：{total_patterns} 个模式 -> {len(established_groups)} 个组")
         
         # 合并统计数据
-        return self._merge_group_stats(established_groups, results)
+        grouped_results = self._merge_group_stats(established_groups, results)
+        
+        # 在分组后应用频率过滤
+        filtered_grouped_results = {group_id: stats for group_id, stats in grouped_results.items() 
+                                   if stats.get('frequency', 0) >= self.min_frequency}
+        
+        print(f"频率过滤：{len(grouped_results)} 个组 -> {len(filtered_grouped_results)} 个组（频率>={self.min_frequency}）")
+        return filtered_grouped_results
     
     def _calculate_pattern_similarity_matrix(self, patterns: List[Tuple], 
                                            results: Dict[Tuple, Dict]) -> np.ndarray:
@@ -309,7 +323,7 @@ class PatternGrouper:
                 'pattern_count': len(group_patterns),
                 'representative_pattern': str(group_patterns[0]),  # 使用第一个作为代表
                 'all_patterns': [str(p) for p in group_patterns],
-                'total_frequency': total_frequency
+                'frequency': total_frequency  # 使用frequency保持与非分组结果的一致性
             }
             
             # 调试信息：显示分组详情

@@ -426,7 +426,8 @@ class RankedKLineAnalyzer:
         
         grouper = PatternGrouper(
             correlation_threshold=self.correlation_threshold,
-            batch_size=5000  # 默认批量大小，可以根据内存情况调整
+            batch_size=5000,  # 默认批量大小，可以根据内存情况调整
+            min_frequency=self.min_frequency  # 传递频率阈值
         )
         grouped_results = grouper.group_patterns(results)
         
@@ -532,6 +533,7 @@ class RankedKLineAnalyzer:
     def _merge_pattern_results(self, all_patterns: defaultdict, all_returns: Dict) -> Dict[str, Any]:
         """
         合并模式统计结果
+        注意：当启用分组功能时，不在此处进行频率过滤，而是在分组后再过滤
         
         Args:
             all_patterns: 所有模式频率数据
@@ -550,36 +552,43 @@ class RankedKLineAnalyzer:
             # 计算总频率
             total_frequency = sum(all_patterns[pattern])
             
-            if total_frequency >= self.min_frequency:
-                pattern_stats = {'frequency': total_frequency}
+            # 重要修改：如果启用分组，则不在此处过滤，而是保留所有模式用于分组
+            if not self.enable_grouping and total_frequency < self.min_frequency:
+                processed_patterns += 1
+                continue
                 
-                # 计算各期收益率统计
-                for day in self.future_days:
-                    returns_key = f'returns_{day}d'
-                    if pattern in all_returns[day]:
-                        returns_data = all_returns[day][pattern]
-                        if returns_data:
-                            pattern_stats[returns_key] = {
-                                'mean': np.mean(returns_data),
-                                'std': np.std(returns_data),
-                                'count': len(returns_data)
-                            }
-                        else:
-                            pattern_stats[returns_key] = {
-                                'mean': 0.0,
-                                'std': 0.0,
-                                'count': 0
-                            }
-                
-                merged_results[pattern] = pattern_stats
+            pattern_stats = {'frequency': total_frequency}
+            
+            # 计算各期收益率统计
+            for day in self.future_days:
+                returns_key = f'returns_{day}d'
+                if pattern in all_returns[day]:
+                    returns_data = all_returns[day][pattern]
+                    if returns_data:
+                        pattern_stats[returns_key] = {
+                            'mean': np.mean(returns_data),
+                            'std': np.std(returns_data),
+                            'count': len(returns_data)
+                        }
+                    else:
+                        pattern_stats[returns_key] = {
+                            'mean': 0.0,
+                            'std': 0.0,
+                            'count': 0
+                        }
+            
+            merged_results[pattern] = pattern_stats
             
             processed_patterns += 1
             if processed_patterns % 10000 == 0:
                 progress = processed_patterns / total_patterns * 100
                 print(f"合并进度: {processed_patterns}/{total_patterns} ({progress:.1f}%)")
         
-        filtered_count = len(merged_results)
-        print(f"过滤后保留{filtered_count}个模式（频率>={self.min_frequency}）")
+        if self.enable_grouping:
+            print(f"分组模式：保留{len(merged_results)}个模式用于分组（将在分组后应用频率过滤）")
+        else:
+            filtered_count = len(merged_results)
+            print(f"过滤后保留{filtered_count}个模式（频率>={self.min_frequency}）")
         
         return merged_results
     

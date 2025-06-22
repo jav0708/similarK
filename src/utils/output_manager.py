@@ -42,6 +42,7 @@ class OutputManager:
             price_type: 价格类型
             window: 窗口长度
             results: 分析结果字典
+            min_frequency: 最小频率阈值（仅在非分组模式下使用）
             
         Returns:
             保存的文件路径
@@ -49,12 +50,17 @@ class OutputManager:
         filename = f"{stock_code}_{price_type}_w{window}.csv"
         file_path = self.output_dir / "single_stock" / filename
         
-        # 应用频率过滤
-        filtered_results = {pattern: stats for pattern, stats in results.items() 
-                           if stats.get('frequency', stats.get('total_frequency', 0)) >= min_frequency}
-        
         # 检测是否为分组结果
-        is_grouped = any('group_id' in stats for stats in filtered_results.values())
+        is_grouped = any('group_id' in stats for stats in results.values())
+        
+        # 应用频率过滤（注意：分组结果已经在analyzer中完成频率过滤）
+        if is_grouped:
+            # 分组结果：已经在分组阶段完成频率过滤，这里直接使用
+            filtered_results = results
+        else:
+            # 非分组结果：在这里应用频率过滤
+            filtered_results = {pattern: stats for pattern, stats in results.items() 
+                               if stats.get('frequency', 0) >= min_frequency}
         
         # 转换为DataFrame
         df = self._results_to_dataframe(filtered_results, is_grouped)
@@ -73,6 +79,7 @@ class OutputManager:
             price_type: 价格类型
             window: 窗口长度
             results: 分析结果字典
+            min_frequency: 最小频率阈值（仅在非分组模式下使用）
             
         Returns:
             保存的文件路径
@@ -80,12 +87,17 @@ class OutputManager:
         filename = f"market_{price_type}_w{window}.csv"
         file_path = self.output_dir / "market" / filename
         
-        # 应用频率过滤
-        filtered_results = {pattern: stats for pattern, stats in results.items() 
-                           if stats.get('frequency', stats.get('total_frequency', 0)) >= min_frequency}
-        
         # 检测是否为分组结果
-        is_grouped = any('group_id' in stats for stats in filtered_results.values())
+        is_grouped = any('group_id' in stats for stats in results.values())
+        
+        # 应用频率过滤（注意：分组结果已经在analyzer中完成频率过滤）
+        if is_grouped:
+            # 分组结果：已经在分组阶段完成频率过滤，这里直接使用
+            filtered_results = results
+        else:
+            # 非分组结果：在这里应用频率过滤
+            filtered_results = {pattern: stats for pattern, stats in results.items() 
+                               if stats.get('frequency', 0) >= min_frequency}
         
         # 转换为DataFrame
         df = self._results_to_dataframe(filtered_results, is_grouped)
@@ -137,7 +149,7 @@ class OutputManager:
                     'return_10d_std': stats.get('returns_10d', {}).get('std', 0.0),
                     'return_20d_mean': stats.get('returns_20d', {}).get('mean', 0.0),
                     'return_20d_std': stats.get('returns_20d', {}).get('std', 0.0),
-                    'frequency': stats.get('total_frequency', stats.get('frequency', 0))
+                    'frequency': stats.get('frequency', 0)
                 }
             else:
                 # 原始结果格式
@@ -204,7 +216,7 @@ class OutputManager:
         # 计算统计信息
         total_patterns = len(results)
         high_freq_patterns = sum(1 for stats in results.values() 
-                               if stats.get('frequency', stats.get('total_frequency', 0)) >= min_frequency)
+                               if stats.get('frequency', 0) >= min_frequency)
         
         # 计算所有可能的模式数量（仅在window<=10时显示，否则数字太大）
         import math
@@ -221,7 +233,7 @@ class OutputManager:
             # 检测是否为分组结果
             is_grouped = any('group_id' in stats for stats in results.values())
             if is_grouped:
-                max_freq = max(stats.get('total_frequency', stats.get('frequency', 0)) 
+                max_freq = max(stats.get('frequency', 0) 
                              for stats in results.values())
                 total_original_patterns = sum(stats.get('pattern_count', 1) 
                                            for stats in results.values())
