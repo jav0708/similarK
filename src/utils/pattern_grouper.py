@@ -171,8 +171,8 @@ class PatternGrouper:
     def _calculate_pattern_similarity_matrix(self, patterns: List[Tuple], 
                                            results: Dict[Tuple, Dict]) -> np.ndarray:
         """
-        计算排列模式之间的结构相似性矩阵
-        使用Spearman秩相关系数来衡量排列的结构相似性
+        计算排列模式之间的结构相似性矩阵（向量化优化版本）
+        使用归一化距离来衡量排列的结构相似性
         
         Args:
             patterns: 排列模式列表
@@ -182,33 +182,37 @@ class PatternGrouper:
             相似性矩阵
         """
         n = len(patterns)
-        similarity_matrix = np.eye(n)  # 对角线为1
+        print(f"计算 {n}x{n} 排列结构相似性矩阵（向量化版本）...")
         
-        print(f"计算 {n}x{n} 排列结构相似性矩阵...")
+        if n == 0:
+            return np.array([])
         
-        # 使用tqdm显示进度条
-        with tqdm(total=n, desc="计算相似性矩阵", unit="行") as pbar:
-            for i in range(n):
-                for j in range(i + 1, n):
-                    try:
-                        pattern_i = np.array(patterns[i])
-                        pattern_j = np.array(patterns[j])
-                        
-                        # 计算排列之间的距离相似性
-                        # 使用归一化的逆距离作为相似性度量
-                        max_possible_diff = 2 * sum(range(1, len(pattern_i) + 1))  # 更准确的最大距离
-                        actual_distance = np.sum(np.abs(pattern_i - pattern_j))
-                        normalized_distance = actual_distance / max_possible_diff
-                        similarity = 1.0 - normalized_distance  # 距离越小，相似性越高
-                        
-                        similarity_matrix[i, j] = max(0.0, similarity)
-                        similarity_matrix[j, i] = max(0.0, similarity)
-                            
-                    except Exception as e:
-                        similarity_matrix[i, j] = 0.0
-                        similarity_matrix[j, i] = 0.0
-                
-                pbar.update(1)  # 更新进度条
+        # 将所有模式转换为numpy数组矩阵
+        patterns_array = np.array(patterns)  # 形状: (n, window_size)
+        
+        # 计算最大可能距离（用于归一化）
+        window_size = len(patterns[0])
+        max_possible_diff = 2 * sum(range(1, window_size + 1))
+        
+        # 向量化计算所有模式对之间的距离
+        # 使用广播计算距离矩阵
+        # patterns_array[:, None, :] 形状: (n, 1, window_size)  
+        # patterns_array[None, :, :] 形状: (1, n, window_size)
+        # 广播后得到 (n, n, window_size) 的差异矩阵
+        differences = np.abs(patterns_array[:, None, :] - patterns_array[None, :, :])
+        
+        # 对最后一个维度求和，得到距离矩阵 (n, n)
+        distance_matrix = np.sum(differences, axis=2)
+        
+        # 归一化距离并转换为相似性
+        normalized_distances = distance_matrix / max_possible_diff
+        similarity_matrix = 1.0 - normalized_distances
+        
+        # 确保相似性在[0, 1]范围内，并且对角线为1
+        similarity_matrix = np.clip(similarity_matrix, 0.0, 1.0)
+        np.fill_diagonal(similarity_matrix, 1.0)
+        
+        print(f"相似性矩阵计算完成，平均相似性: {np.mean(similarity_matrix[np.triu_indices(n, k=1)]):.3f}")
         
         return similarity_matrix
     
